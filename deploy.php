@@ -74,7 +74,7 @@ ob_start();
       $requiredBinaries[] = 'composer --no-ansi';
     }
     foreach ($requiredBinaries as $command) {
-      $path = trim(shell_exec('which '.$command));
+      $path = trim(exec('which '.$command));
       if ($path == '') {
         die(sprintf('<div class="error"><b>%s</b> not available. It needs to be installed on the server for this script to work.</div>', $command));
       } else {
