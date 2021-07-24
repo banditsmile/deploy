@@ -4,6 +4,8 @@
 class publish{
 
     private $conf;
+    private $branchDir;
+    private $tarFile;
 
     public function __construct($option)
     {
@@ -18,8 +20,8 @@ class publish{
      */
     public function checkoutCode($branch, $repos,$workDir)
     {
-        $checkOutDir = rtrim($workDir).DIRECTORY_SEPARATOR.time();
-        return  sprintf('git clone --branch=%s %s %s',$branch, $repos, $checkOutDir );
+        $this->branchDir = rtrim($workDir).DIRECTORY_SEPARATOR.time();
+        return  sprintf('git clone --branch=%s %s %s',$branch, $repos, $this->branchDir );
     }
     /**
      * 根据提供的发布分支和线上稳定分支获取待发布文件列表
@@ -32,7 +34,7 @@ class publish{
     public function getFileList($releaseBranch, $onlineBranch, $workDir)
     {
         //对比差异文件
-        $command = "cd {$workDir} && git diff $onlineBranch..{$releaseBranch} --stat";
+        $command = " git diff $onlineBranch..{$releaseBranch} --stat";
         //去除git diff输出的最后一行统计数据,得到差异文件列表
         $command .= "| head -n -1";
         //文件列表列转行
@@ -50,12 +52,12 @@ class publish{
      */
     public function compressFiles($files, $tempDir='/tmp', $exclude=[])
     {
-        $tarFile = $tempDir.DIRECTORY_SEPARATOR.date("YmdHis").'tar.gz';
+        $this->tarFile = $tempDir.DIRECTORY_SEPARATOR.date("YmdHis").'tar.gz';
         $excStr = '';
         foreach($exclude as $file){
             $excStr .= sprintf('--exclude=%s', $file);
         }
-        return  sprintf('tar -czf %s %s  %s', $tarFile, $files,  $excStr);
+        return  sprintf('tar -czf %s %s  %s', $this->tarFile, $files,  $excStr);
     }
 
     /**
@@ -76,10 +78,7 @@ class publish{
             $excStr .= sprintf('--exclude=%s', $file);
         }
         //远程主机文件备份命令
-        $command = sprintf('tar -czPf %s %s  %s', $tarFile, $releaseDir,  $excStr);
-        //远程主机连接命令
-        $loginCommand = sprintf('ssh %s@%s -p %s', $target['user'], $target['host'], $target['port']);
-        return  $loginCommand.' '.$command;
+        return  sprintf('tar -czPf %s %s  %s', $tarFile, $releaseDir,  $excStr);
     }
 
     /**
@@ -128,6 +127,11 @@ class publish{
     public function executeCommand($command)
     {
         $return = exec($command, $out, $code);
+        var_dump($command);
+        var_dump($code);
+        var_dump($out);
+        var_dump($return);
+
         return ['code'=>$code, 'data'=>['out'=>$out,'return'=>$return]];
     }
 
@@ -145,26 +149,61 @@ class publish{
         return $this->executeCommand($command);
     }
 
-    public function test()
+    public function test($releaseBranch, $targets, $app)
     {
-        $releaseBranch = 'bandit/20210723';
-        $targets =[
-            ['name'=>'app1','host'=>'47.104.150.123','user'=>'user01','port'=>9761],
-            ['name'=>'app2','host'=>'47.104.150.123','user'=>'user01','port'=>9761],
-        ];
-        $app = [
-            ['name'=>'deploy',
-                'repos'=>'https://github.com/banditsmile/deploy.git',
-                'onlineBranch'=>'master',
-                'workDir'=>'/data/wwwroot/test/deploy',
-                'exclude'=>['.git']
-            ]
-        ];
-        $localCommand = $this->checkoutCode($releaseBranch, $app[0]['repos'], $app[0]['workDir']);
+
+        $localCommand = $this->checkoutCode($releaseBranch, $app['repos'], $app['workDir']);
         $return = $this->executeCommand($localCommand);
 
-        $localCommand = $this->getFileList($releaseBranch, $app[0]['onlineBranch'], $app[0]['workDir']);
+        ####################必须在切出的分支目录下面执行##############################################
+        //获取待发布文件列表
+        $localCommand = $this->getFileList($releaseBranch, $app['onlineBranch'], $app['workDir']);
+        $localCommand = sprintf('cd %s && %s', $this->branchDir, $localCommand);
         $return = $this->executeCommand($localCommand);
-        $localCommand = $this->compressFiles();
+
+        //打包文件
+        $localCommand = $this->compressFiles($return['data']['out']);
+        $localCommand = sprintf('cd %s && %s', $this->branchDir, $localCommand);
+        $return = $this->executeCommand($localCommand);
+        ####################必须在切出的分支目录下面执行##############################################
+
+        //传输文件到远程主机临时目录
+        foreach($targets as $target){
+            $localCommand = $this->transFile($this->tarFile, $target, $app['remoteTempDir']);
+            $return = $this->executeCommand($localCommand);
+        }
+
+        ###################################在远程主机上执行的命令###############################################
+        $tarFile = str_replace($app['workDir'], $app['remoteTempDir'], $this->tarFile);
+        foreach($targets as $target){
+            //备份线上文件
+            $remoteCommand = $this->backupTarget($target, $app['releaseDir'],$app['backupDir']);
+            $return = $this->executeRemoteCommand($remoteCommand, $target);
+            //解压发布压缩包到线上目录
+            $remoteCommand = $this->releaseFile($tarFile, $app['releaseDir']);
+            $return = $this->executeRemoteCommand($remoteCommand, $target);
+        }
+
+
+        ###################################在远程主机上执行的命令###############################################
+
+
     }
 }
+
+$releaseBranch = 'bandit/20210723';
+$targets =[
+    ['name'=>'app1','host'=>'47.104.150.123','user'=>'user01','port'=>9761],
+    //['name'=>'app2','host'=>'47.104.150.123','user'=>'user01','port'=>9761],
+];
+$app =
+    ['name'=>'deploy',
+        'repos'=>'https://github.com/banditsmile/deploy.git',
+        'onlineBranch'=>'master',
+        'workDir'=>'/data/wwwroot/test/deploy',
+        'exclude'=>['.git'],
+        'remoteTempDir'=>'/tmp',
+        'remoteReleaseDir'=>'/home/user01/release/',
+        'remoteBackupDIr'=>'/home/user01/archive/',
+    ];
+(new publish([]))->test($releaseBranch , $targets, $app);
