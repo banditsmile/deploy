@@ -18,7 +18,7 @@ if (!defined('SECRET_ACCESS_TOKEN')) define('SECRET_ACCESS_TOKEN', 'bandit');
  *
  * @var string
  */
-if (!defined('REMOTE_REPOSITORY')) define('REMOTE_REPOSITORY', 'https://github.com/476552238li/php-sql-parser.git');
+if (!defined('REMOTE_REPOSITORY')) define('REMOTE_REPOSITORY', 'https://github.com/banditsmile/deploy.git');
 
 /**
  * The branch that's being deployed.
@@ -26,7 +26,7 @@ if (!defined('REMOTE_REPOSITORY')) define('REMOTE_REPOSITORY', 'https://github.c
  *
  * @var string
  */
-if (!defined('BRANCH')) define('BRANCH', 'master');
+if (!defined('BRANCH')) define('BRANCH', 'bandit/20210723');
 
 /**
  * The location that the code is going to be deployed to.
@@ -34,7 +34,7 @@ if (!defined('BRANCH')) define('BRANCH', 'master');
  *
  * @var string Full path including the trailing slash
  */
-if (!defined('TARGET_DIR')) define('TARGET_DIR', '/home/user01/test/publish');
+if (!defined('TARGET_DIR')) define('TARGET_DIR', '/data/wwwroot/test/publish');
 
 /**
  * Whether to delete the files that are not in the repository but are on the
@@ -76,7 +76,7 @@ if (!defined('TMP_DIR')) define('TMP_DIR', '/tmp/spgd-'.md5(REMOTE_REPOSITORY).'
  * It's useful NOT to clean up in order to only fetch changes on the next
  * deployment.
  */
-if (!defined('CLEAN_UP')) define('CLEAN_UP', true);
+if (!defined('CLEAN_UP')) define('CLEAN_UP', false);
 
 /**
  * Output the version of the deployed code.

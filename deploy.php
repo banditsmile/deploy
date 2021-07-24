@@ -17,7 +17,7 @@
  * configuration options there instead of here. That way, you won't have to edit
  * the configuration again if you download the new version of `deploy.php`.
  */
-require_once basename(__FILE__, '.php').'-config.php';
+require_once basename(__FILE__, '.php') . '-config.php';
 
 ################################test data########################################
 
@@ -28,119 +28,87 @@ $_GET['sat'] = 'bandit';
 
 // If there's authorization error, set the correct HTTP header.
 if (!isset($_GET['sat']) || $_GET['sat'] !== SECRET_ACCESS_TOKEN || SECRET_ACCESS_TOKEN === '6a604a35d5a7c3fd8786f5ee94991a8c') {
-  header('HTTP/1.0 403 Forbidden');
+    header('HTTP/1.0 403 Forbidden');
 }
 ob_start();
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="robots" content="noindex">
-  <title>Simple PHP Git deploy script</title>
-  <style>
-    body { padding: 0 1em; background: #222; color: #fff; }
-    h2, .error { color: #c33; }
-    .prompt { color: #6be234; }
-    .command { color: #729fcf; }
-    .output { color: #999; }
-  </style>
-</head>
-<body>
-  <?php
-  if (!isset($_GET['sat']) || $_GET['sat'] !== SECRET_ACCESS_TOKEN) {
-    die('<h2>ACCESS DENIED!</h2>');
-  }
-  if (SECRET_ACCESS_TOKEN === 'BetterChangeMeNowOrSufferTheConsequences') {
-    die("<h2>You're suffering the consequences!<br>Change the SECRET_ACCESS_TOKEN from it's default value!</h2>");
-  }
-  ?>
-  <pre>
+echo "Simple PHP Git deploy script", PHP_EOL;
+echo "Checking the environment ...", PHP_EOL;
+$tmp = exec('whoami', $tmp);
+echo trim($tmp), PHP_EOL;
 
-    Checking the environment ...
-
-    Running as <b><?php echo trim(shell_exec('whoami')); ?></b>.
-
-    <?php
-    // Check if the required programs are available
-    $requiredBinaries = array('git', 'rsync');
-    if (defined('BACKUP_DIR') && BACKUP_DIR !== false) {
-      $requiredBinaries[] = 'tar';
-      if (!is_dir(BACKUP_DIR) || !is_writable(BACKUP_DIR)) {
-        die(sprintf('<div class="error">BACKUP_DIR `%s` does not exists or is not writeable.</div>', BACKUP_DIR));
-      }
+// Check if the required programs are available
+$requiredBinaries = array('git', 'rsync');
+if (defined('BACKUP_DIR') && BACKUP_DIR !== false) {
+    $requiredBinaries[] = 'tar';
+    if (!is_dir(BACKUP_DIR) || !is_writable(BACKUP_DIR)) {
+        die(sprintf('BACKUP_DIR `%s` does not exists or is not writeable.', BACKUP_DIR));
     }
-    if (defined('USE_COMPOSER') && USE_COMPOSER === true) {
-      $requiredBinaries[] = 'composer --no-ansi';
+}
+if (defined('USE_COMPOSER') && USE_COMPOSER === true) {
+    $requiredBinaries[] = 'composer --no-ansi';
+}
+foreach ($requiredBinaries as $command) {
+    $path = trim(exec('which ' . $command));
+    if ($path == '') {
+        die(sprintf('%s  not available. It needs to be installed on the server for this script to work.', $command));
+    } else {
+        unset($v);
+        exec($command . ' --version', $v);
+        $version = explode("\n", end($v));
+        echo $path, $version[0], PHP_EOL;
     }
-    foreach ($requiredBinaries as $command) {
-      $path = trim(exec('which '.$command));
-      if ($path == '') {
-        die(sprintf('<div class="error"><b>%s</b> not available. It needs to be installed on the server for this script to work.</div>', $command));
-      } else {
-        $version = explode("\n", shell_exec($command.' --version'));
-        printf('<b>%s</b> : %s'."\n"
-          , $path
-          , $version[0]
-          );
-      }
-    }
-    ?>
+}
+echo "Environment OK.", PHP_EOL;
+echo "Deploying  ", REMOTE_REPOSITORY, "\t", BRANCH, PHP_EOL;
+echo "to ", TARGET_DIR, PHP_EOL;
+// The commands
+$commands = array();
 
-    Environment OK.
+// ========================================[ Pre-Deployment steps ]===
 
-    Deploying <?php echo REMOTE_REPOSITORY; ?> <?php echo BRANCH."\n"; ?>
-    to        <?php echo TARGET_DIR; ?> ...
-
-    <?php
-    // The commands
-    $commands = array();
-
-    // ========================================[ Pre-Deployment steps ]===
-
-    if (!is_dir(TMP_DIR)) {
-      // Clone the repository into the TMP_DIR
-      $commands[] = sprintf(
+if (!is_dir(TMP_DIR)) {
+    // Clone the repository into the TMP_DIR
+    $commands[] = sprintf(
         'git clone --depth=1 --branch %s %s %s'
         , BRANCH
         , REMOTE_REPOSITORY
         , TMP_DIR
-        );
-    } else {
-      // TMP_DIR exists and hopefully already contains the correct remote origin
-      // so we'll fetch the changes and reset the contents.
-      $commands[] = sprintf(
+    );
+} else {
+    // TMP_DIR exists and hopefully already contains the correct remote origin
+    // so we'll fetch the changes and reset the contents.
+    $commands[] = sprintf(
         'git --git-dir="%s.git" --work-tree="%s" fetch origin %s'
         , TMP_DIR
         , TMP_DIR
         , BRANCH
-        );
-      $commands[] = sprintf(
+    );
+    $commands[] = sprintf(
         'git --git-dir="%s.git" --work-tree="%s" reset --hard FETCH_HEAD'
         , TMP_DIR
         , TMP_DIR
-        );
-    }
+    );
+}
 
-    // Update the submodules
+// Update the submodules
+$commands[] = sprintf(
+    'git submodule update --init --recursive'
+);
+
+// Describe the deployed version
+if (defined('VERSION_FILE') && VERSION_FILE !== '') {
     $commands[] = sprintf(
-      'git submodule update --init --recursive'
-      );
-
-    // Describe the deployed version
-    if (defined('VERSION_FILE') && VERSION_FILE !== '') {
-      $commands[] = sprintf(
         'git --git-dir="%s.git" --work-tree="%s" describe --always > %s'
         , TMP_DIR
         , TMP_DIR
         , VERSION_FILE
-        );
-    }
+    );
+}
 
-    // Backup the TARGET_DIR
-    // without the BACKUP_DIR for the case when it's inside the TARGET_DIR
-    if (defined('BACKUP_DIR') && BACKUP_DIR !== false) {
-      $commands[] = sprintf(
+// Backup the TARGET_DIR
+// without the BACKUP_DIR for the case when it's inside the TARGET_DIR
+if (defined('BACKUP_DIR') && BACKUP_DIR !== false) {
+    $commands[] = sprintf(
         "tar --exclude='%s*' -czf %s/%s-%s-%s.tar.gz %s*"
         , BACKUP_DIR
         , BACKUP_DIR
@@ -148,109 +116,101 @@ ob_start();
         , md5(TARGET_DIR)
         , date('YmdHis')
         , TARGET_DIR // We're backing up this directory into BACKUP_DIR
-      );
-    }
+    );
+}
 
-    // Invoke composer
-    if (defined('USE_COMPOSER') && USE_COMPOSER === true) {
-      $commands[] = sprintf(
+// Invoke composer
+if (defined('USE_COMPOSER') && USE_COMPOSER === true) {
+    $commands[] = sprintf(
         'composer --no-ansi --no-interaction --no-progress --working-dir=%s install %s'
         , TMP_DIR
         , (defined('COMPOSER_OPTIONS')) ? COMPOSER_OPTIONS : ''
-        );
-      if (defined('COMPOSER_HOME') && is_dir(COMPOSER_HOME)) {
-        putenv('COMPOSER_HOME='.COMPOSER_HOME);
-      }
-    }
-
-    // ==================================================[ Deployment ]===
-
-    // Compile exclude parameters
-    $exclude = '';
-    foreach (unserialize(EXCLUDE) as $exc) {
-      $exclude .= ' --exclude='.$exc;
-    }
-
-    // Deployment command
-    $commands[] = sprintf(
-      'rsync -rltgoDzvO %s %s %s %s'
-      , TMP_DIR
-      , TARGET_DIR
-      , (DELETE_FILES) ? '--delete-after' : ''
-      , $exclude
     );
+    if (defined('COMPOSER_HOME') && is_dir(COMPOSER_HOME)) {
+        putenv('COMPOSER_HOME=' . COMPOSER_HOME);
+    }
+}
 
-    // =======================================[ Post-Deployment steps ]===
+// ==================================================[ Deployment ]===
 
-    // Remove the TMP_DIR (depends on CLEAN_UP)
-    if (CLEAN_UP) {
-      $commands['cleanup'] = sprintf(
+// Compile exclude parameters
+$exclude = '';
+foreach (unserialize(EXCLUDE) as $exc) {
+    $exclude .= ' --exclude=' . $exc;
+}
+
+// Deployment command
+$commands[] = sprintf(
+    'rsync -rltgoDzvO %s %s %s %s'
+    , TMP_DIR
+    , TARGET_DIR
+    , (DELETE_FILES) ? '--delete-after' : ''
+    , $exclude
+);
+
+// =======================================[ Post-Deployment steps ]===
+
+// Remove the TMP_DIR (depends on CLEAN_UP)
+if (CLEAN_UP) {
+    $commands['cleanup'] = sprintf(
         'rm -rf %s'
         , TMP_DIR
-        );
-    }
+    );
+}
 
-    // =======================================[ Run the command steps ]===
-    $output = '';
-    foreach ($commands as $command) {
-      set_time_limit(TIME_LIMIT); // Reset the time limit for each command
-      if (file_exists(TMP_DIR) && is_dir(TMP_DIR)) {
+// =======================================[ Run the command steps ]===
+$output = '';
+foreach ($commands as $command) {
+    set_time_limit(TIME_LIMIT); // Reset the time limit for each command
+    if (file_exists(TMP_DIR) && is_dir(TMP_DIR)) {
         chdir(TMP_DIR); // Ensure that we're in the right directory
-      }
-      $tmp = array();
-      exec($command.' 2>&1', $tmp, $return_code); // Execute the command
-      // Output the result
-      printf('
-        <span class="prompt">$</span> <span class="command">%s</span>
-        <div class="output">%s</div>
+    }
+    $tmp = array();
+    exec($command . ' 2>&1', $tmp, $return_code); // Execute the command
+    // Output the result
+    printf('
+        $ %s
+         %s
         '
         , htmlentities(trim($command))
         , htmlentities(trim(implode("\n", $tmp)))
-        );
-      $output .= ob_get_contents();
-      ob_flush(); // Try to output everything as it happens
+    );
+    $output .= ob_get_contents();
+    ob_flush(); // Try to output everything as it happens
 
-      // Error handling and cleanup
-      if ($return_code !== 0) {
+    // Error handling and cleanup
+    if ($return_code !== 0) {
         printf('
-          <div class="error">
             Error encountered!
             Stopping the script to prevent possible data loss.
             CHECK THE DATA IN YOUR TARGET DIR!
-          </div>
           '
-          );
+        );
         if (CLEAN_UP) {
-          $tmp = shell_exec($commands['cleanup']);
-          printf('
+            exec($commands['cleanup'], $tmp);
+            printf('
             Cleaning up temporary files ...
 
-            <span class="prompt">$</span> <span class="command">%s</span>
-            <div class="output">%s</div>
+            $ %s
+            %s
             '
-            , htmlentities(trim($commands['cleanup']))
-            , htmlentities(trim($tmp))
+                , htmlentities(trim($commands['cleanup']))
+                , htmlentities(trim($tmp))
             );
         }
         $error = sprintf(
-          'Deployment error on %s using %s!'
-          , $_SERVER['HTTP_HOST']
-          , __FILE__
-          );
+            'Deployment error on %s using '
+            , __FILE__
+        );
         error_log($error);
         if (EMAIL_ON_ERROR) {
-          $output .= ob_get_contents();
-          $headers = array();
-          $headers[] = sprintf('From: Simple PHP Git deploy script <simple-php-git-deploy@%s>', $_SERVER['HTTP_HOST']);
-          $headers[] = sprintf('X-Mailer: PHP/%s', phpversion());
-          mail(EMAIL_ON_ERROR, $error, strip_tags(trim($output)), implode("\r\n", $headers));
+            $output .= ob_get_contents();
+            $headers = array();
+            $headers[] = sprintf('From: Simple PHP Git deploy script <simple-php-git-deploy@%s>', $_SERVER['HTTP_HOST']);
+            $headers[] = sprintf('X-Mailer: PHP/%s', phpversion());
+            mail(EMAIL_ON_ERROR, $error, strip_tags(trim($output)), implode("\r\n", $headers));
         }
         break;
-      }
     }
-    ?>
-  Done.
-  </pre>
-</body>
-</html>
-
+}
+echo "Done.", PHP_EOL;
