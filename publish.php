@@ -162,7 +162,7 @@ class publish{
         $return = $this->executeCommand($localCommand);
 
         //打包文件
-        $localCommand = $this->compressFiles($return['data']['out']);
+        $localCommand = $this->compressFiles($return['data']['out'][0]);
         $localCommand = sprintf('cd %s && %s', $this->branchDir, $localCommand);
         $return = $this->executeCommand($localCommand);
         ####################必须在切出的分支目录下面执行##############################################
@@ -177,10 +177,10 @@ class publish{
         $tarFile = str_replace($app['workDir'], $app['remoteTempDir'], $this->tarFile);
         foreach($targets as $target){
             //备份线上文件
-            $remoteCommand = $this->backupTarget($target, $app['releaseDir'],$app['backupDir']);
+            $remoteCommand = $this->backupTarget($target, $app['remoteReleaseDir'],$app['remoteBackupDIr']);
             $return = $this->executeRemoteCommand($remoteCommand, $target);
             //解压发布压缩包到线上目录
-            $remoteCommand = $this->releaseFile($tarFile, $app['releaseDir']);
+            $remoteCommand = $this->releaseFile($tarFile, $app['remoteReleaseDir']);
             $return = $this->executeRemoteCommand($remoteCommand, $target);
         }
 
@@ -198,8 +198,8 @@ $targets =[
 ];
 $app =
     ['name'=>'deploy',
-        'repos'=>'https://github.com/banditsmile/deploy.git',
-        'onlineBranch'=>'master',
+        'repos'=>'http://192.168.92.13:98/root/deploy.git',
+        'onlineBranch'=>'origin/master',
         'workDir'=>'/data/wwwroot/test/deploy',
         'exclude'=>['.git'],
         'remoteTempDir'=>'/tmp',
