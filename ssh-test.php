@@ -52,4 +52,6 @@ $command = 'eval `ssh-agent -s`;/usr/bin/expect /var/www/deploy/ssh.sh;ssh-add -
   exec("ssh-add 2>&1", $tmp, $return_code);
   echo "<pre>";
   var_dump($tmp);
-  echo "</pre>";*/
+  echo "</pre>";
+"冲突检测测试"
+*/
