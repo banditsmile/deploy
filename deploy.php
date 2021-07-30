@@ -213,4 +213,4 @@ foreach ($commands as $command) {
         break;
     }
 }
-echo "Done.", PHP_EOL;
+echo "Done.confilict test", PHP_EOL;
