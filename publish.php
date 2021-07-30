@@ -6,11 +6,14 @@ class publish{
     private $conf;
     private $branchDir;
     private $tarFile;
+    private $onlineBranch;
 
     public function __construct($option)
     {
-        $this->conf = array_merge($this->conf, $option);
+        $this->onlineBranch = $option['onlineBranch'];
     }
+
+
 
     /**
      * @param $branch
@@ -23,6 +26,39 @@ class publish{
         $this->branchDir = rtrim($workDir).DIRECTORY_SEPARATOR.time();
         return  sprintf('git clone --branch=%s %s %s',$branch, $repos, $this->branchDir );
     }
+
+
+    /**
+     * 检查将要发布的分支和线上分支是否存在冲突
+     *
+     * @return array
+     */
+    public function checkConflict()
+    {
+        //尝试合并操作，检查分支冲突
+        $command = sprintf('cd %s && git merge --no-commit --no-ff %s', $this->branchDir, $this->onlineBranch);
+        $return = $this->executeCommand($command);
+        //撤销合并操作
+        $command = sprintf('cd %s && git merge --abort', $this->branchDir);
+        $this->executeCommand($command);
+        //说明有冲突，提取冲突文件列表
+        $fileList = [];
+        if($return['code']!=0){
+            $num = count($return['data']['out']);
+            for($i=0;$i<$num;$i+=2){
+                $temp = explode(" ", $return['data']['out'][$i]);
+                $fileList[]=end($temp);
+            }
+        }
+        $return['data']['fileList'] = $fileList;
+        return  $return;
+    }
+
+    public function branchFileCompare()
+    {
+
+    }
+
     /**
      * 根据提供的发布分支和线上稳定分支获取待发布文件列表
      * 需要在仓库发布的分支目录下工作
@@ -131,6 +167,7 @@ class publish{
         var_dump($code);
         var_dump($out);
         var_dump($return);
+        echo '------------------------------------------------------------',PHP_EOL;
 
         return ['code'=>$code, 'data'=>['out'=>$out,'return'=>$return]];
     }
@@ -154,6 +191,8 @@ class publish{
 
         $localCommand = $this->checkoutCode($releaseBranch, $app['repos'], $app['workDir']);
         $return = $this->executeCommand($localCommand);
+        var_dump($this->checkConflict());
+        exit();
 
         ####################必须在切出的分支目录下面执行##############################################
         //获取待发布文件列表
@@ -196,8 +235,8 @@ $targets =[
     ['name'=>'app1','host'=>'47.104.150.123','user'=>'user01','port'=>9761],
     //['name'=>'app2','host'=>'47.104.150.123','user'=>'user01','port'=>9761],
 ];
-$app =
-    ['name'=>'deploy',
+$app =[
+        'name'=>'deploy',
         'repos'=>'http://192.168.92.13:98/root/deploy.git',
         'onlineBranch'=>'origin/master',
         'workDir'=>'/data/wwwroot/test/deploy',
@@ -206,4 +245,4 @@ $app =
         'remoteReleaseDir'=>'/home/user01/release/',
         'remoteBackupDIr'=>'/home/user01/archive/',
     ];
-(new publish([]))->test($releaseBranch , $targets, $app);
+(new publish($app))->test($releaseBranch , $targets, $app);
